@@ -126,31 +126,38 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 	            } else {
 	                // Si la clave es incorrecta
 	                strcpy(display_buffer, "Error");
-	                error_mode = 1;  // Activa el modo de parpadeo
+	                error_mode = 1;  // Activa el modo de parpadea
 	            }
 	            Update_Display();  // Mostrar el resultado en pantalla
 	            display_index = 0;  // Reiniciar el índice
+
+
 	        } else if (key_pressed == '*') {
 	            // Si se presiona '*', reiniciar la pantalla y el buffer
 	            display_index = 0;  // Reiniciar el índice
+	            HAL_GPIO_WritePin(GPIOA, SYSTEM_LED_Pin, GPIO_PIN_RESET);
 	            memset(display_buffer, 0, DISPLAY_BUFFER_SIZE);  // Limpiar el buffer
 	            Update_Display();  // Limpiar la pantalla
 	        }
 
-	        // Manejar el parpadeo del LED en caso de error
-	         if (error_mode) {
-	        	 static uint32_t last_blink_time = 0;
-	             if (HAL_GetTick() - last_blink_time >= 4000) {  // Parpadeo cada 4 segundos
-	            	 HAL_GPIO_TogglePin(GPIOA, SYSTEM_LED_Pin);  // Cambia el estado del LED
-	                 last_blink_time = HAL_GetTick();
-	                }
-	         }
+	        // Otros botones, como el BUTTON_RIGHT y BUTTON_LEFT, siguen igual
+	        if (GPIO_Pin == BUTTON_RIGHT_Pin) {
+	            HAL_UART_Transmit(&huart2, (uint8_t *)"S1\r\n", 4, 10);
+	            if (HAL_GetTick() < (left_last_press_tick + 300)) {  // Si la última pulsación fue en los últimos 300 ms
+	                left_toggles = 0xFFFFFF;  // Tiempo largo de toggle (infinito)
+	            } else {
+	                left_toggles = 6;
+	            }
+	            left_last_press_tick = HAL_GetTick();
+	        } else if (GPIO_Pin == BUTTON_LEFT_Pin) {
+	            left_toggles = 0;
+	        }
 	    }
 }
 
 void low_power_mode()
 {
-#define AWAKE_TIME (10 * 1000) // 10 segundos
+#define AWAKE_TIME (30 * 1000) // 30 segundos
 	static uint32_t sleep_tick = AWAKE_TIME;
 
 	if (sleep_tick > HAL_GetTick()) {
@@ -242,6 +249,13 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	  if (error_mode == 1) {
+	          static uint32_t last_blink_time = 0;
+	          if (HAL_GetTick() - last_blink_time >= 4000) {  // Parpadeo cada 4 segundos
+	              HAL_GPIO_TogglePin(GPIOA, SYSTEM_LED_Pin);  // Cambia el estado del LED
+	              last_blink_time = HAL_GetTick();
+	          }
+	      }
   }
   /* USER CODE END 3 */
 }
@@ -439,6 +453,12 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, ROW_2_Pin|ROW_4_Pin|ROW_3_Pin, GPIO_PIN_SET);
 
+  /*Configure GPIO pins : BUTTON_LEFT_Pin BUTTON_RIGHT_Pin */
+  GPIO_InitStruct.Pin = BUTTON_LEFT_Pin|BUTTON_RIGHT_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
   /*Configure GPIO pins : SYSTEM_LED_Pin ROW_1_Pin */
   GPIO_InitStruct.Pin = SYSTEM_LED_Pin|ROW_1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
@@ -472,6 +492,12 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI1_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI4_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI4_IRQn);
+
   HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 
