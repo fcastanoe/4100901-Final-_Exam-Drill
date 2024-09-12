@@ -55,6 +55,7 @@ UART_HandleTypeDef huart3;
 /* USER CODE BEGIN PV */
 #define DISPLAY_BUFFER_SIZE 16
 #define USART2_BUFFER_SIZE 8
+#define CORRECT_PASSCODE "1003828997"
 uint8_t usart2_buffer[USART2_BUFFER_SIZE];
 ring_buffer_t usart2_rb;
 uint8_t usart2_rx;
@@ -63,6 +64,8 @@ uint32_t left_toggles = 0;
 uint32_t left_last_press_tick = 0;
 char display_buffer[DISPLAY_BUFFER_SIZE];
 uint8_t display_index = 0;
+
+uint8_t error_mode = 0;  // Control de parpadeo del LED
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -79,10 +82,10 @@ static void MX_USART3_UART_Init(void);
 /* USER CODE BEGIN 0 */
 
 void Update_Display() {
-    ssd1306_Fill(Black);  // Limpiar la pantalla
-    ssd1306_SetCursor(0, 0);  // Reiniciar el cursor al inicio de la pantalla
+    ssd1306_Fill(Black);  // Limpia la pantalla
+    ssd1306_SetCursor(0, 0);  // Reinicia el cursor al inicio de la pantalla
     ssd1306_WriteString(display_buffer, Font_7x10, White);  // Mostrar el buffer en la pantalla
-    ssd1306_UpdateScreen();  // Actualizar la pantalla
+    ssd1306_UpdateScreen();  // Actualiza la pantalla
 }
 
 int _write(int file, char *ptr, int len)
@@ -113,24 +116,35 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 	                display_buffer[display_index] = '\0';  // Asegura que el buffer siempre sea un string válido
 	                Update_Display();  // Actualizar la pantalla
 	            }
-	        } else {
-	            // Si se presiona '#' o '*', podrías realizar alguna acción, como resetear el buffer o enviar el contenido
+	        } else if (key_pressed == '#') {
+	            // Verificar si la clave ingresada es la correcta
+	            if (display_index == 10 && strcmp(display_buffer, CORRECT_PASSCODE) == 0) {
+	                // Si la clave es correcta
+	                strcpy(display_buffer, "success");
+	                HAL_GPIO_WritePin(GPIOA, SYSTEM_LED_Pin, GPIO_PIN_SET);  // Enciende el LED
+	                error_mode = 0;  // Detiene el parpadeo en caso de error
+	            } else {
+	                // Si la clave es incorrecta
+	                strcpy(display_buffer, "Error");
+	                error_mode = 1;  // Activa el modo de parpadeo
+	            }
+	            Update_Display();  // Mostrar el resultado en pantalla
+	            display_index = 0;  // Reiniciar el índice
+	        } else if (key_pressed == '*') {
+	            // Si se presiona '*', reiniciar la pantalla y el buffer
 	            display_index = 0;  // Reiniciar el índice
 	            memset(display_buffer, 0, DISPLAY_BUFFER_SIZE);  // Limpiar el buffer
 	            Update_Display();  // Limpiar la pantalla
 	        }
-	    }
 
-	    if (GPIO_Pin == BUTTON_RIGHT_Pin) {
-	        HAL_UART_Transmit(&huart2, (uint8_t *)"S1\r\n", 4, 10);
-	        if (HAL_GetTick() < (left_last_press_tick + 300)) {  // Si la última pulsación fue en los últimos 300 ms
-	            left_toggles = 0xFFFFFF;  // Tiempo largo de toggle (infinito)
-	        } else {
-	            left_toggles = 6;
-	        }
-	        left_last_press_tick = HAL_GetTick();
-	    } else if (GPIO_Pin == BUTTON_LEFT_Pin) {
-	        left_toggles = 0;
+	        // Manejar el parpadeo del LED en caso de error
+	         if (error_mode) {
+	        	 static uint32_t last_blink_time = 0;
+	             if (HAL_GetTick() - last_blink_time >= 4000) {  // Parpadeo cada 4 segundos
+	            	 HAL_GPIO_TogglePin(GPIOA, SYSTEM_LED_Pin);  // Cambia el estado del LED
+	                 last_blink_time = HAL_GetTick();
+	                }
+	         }
 	    }
 }
 
@@ -425,12 +439,6 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, ROW_2_Pin|ROW_4_Pin|ROW_3_Pin, GPIO_PIN_SET);
 
-  /*Configure GPIO pins : BUTTON_LEFT_Pin BUTTON_RIGHT_Pin */
-  GPIO_InitStruct.Pin = BUTTON_LEFT_Pin|BUTTON_RIGHT_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
   /*Configure GPIO pins : SYSTEM_LED_Pin ROW_1_Pin */
   GPIO_InitStruct.Pin = SYSTEM_LED_Pin|ROW_1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
@@ -464,12 +472,6 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI1_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(EXTI1_IRQn);
-
-  HAL_NVIC_SetPriority(EXTI4_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(EXTI4_IRQn);
-
   HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 
