@@ -105,54 +105,61 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
   }
 }
 
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
-{
-	uint8_t key_pressed = keypad_scan(GPIO_Pin);
-	    if (key_pressed != 0xFF) {
-	        // Si la tecla es un número o símbolo
-	        if (key_pressed != '#' && key_pressed != '*') {
-	            if (display_index < DISPLAY_BUFFER_SIZE - 1) {  // Asegura que no se desborde el buffer
-	                display_buffer[display_index++] = key_pressed;  // Añadir el número al buffer
-	                display_buffer[display_index] = '\0';  // Asegura que el buffer siempre sea un string válido
-	                Update_Display();  // Actualizar la pantalla
-	            }
-	        } else if (key_pressed == '#') {
-	            // Verificar si la clave ingresada es la correcta
-	            if (display_index == 10 && strcmp(display_buffer, CORRECT_PASSCODE) == 0) {
-	                // Si la clave es correcta
-	                strcpy(display_buffer, "success");
-	                HAL_GPIO_WritePin(GPIOA, SYSTEM_LED_Pin, GPIO_PIN_SET);  // Enciende el LED
-	                error_mode = 0;  // Detiene el parpadeo en caso de error
-	            } else {
-	                // Si la clave es incorrecta
-	                strcpy(display_buffer, "Error");
-	                error_mode = 1;  // Activa el modo de parpadea
-	            }
-	            Update_Display();  // Mostrar el resultado en pantalla
-	            display_index = 0;  // Reiniciar el índice
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+    uint8_t key_pressed = keypad_scan(GPIO_Pin);
 
+    if (key_pressed != 0xFF) {
+        // Mostrar la tecla presionada en la consola
+        printf("Tecla presionada: %c\r\n", key_pressed);
 
-	        } else if (key_pressed == '*') {
-	            // Si se presiona '*', reiniciar la pantalla y el buffer
-	            display_index = 0;  // Reiniciar el índice
-	            HAL_GPIO_WritePin(GPIOA, SYSTEM_LED_Pin, GPIO_PIN_RESET);
-	            memset(display_buffer, 0, DISPLAY_BUFFER_SIZE);  // Limpiar el buffer
-	            Update_Display();  // Limpiar la pantalla
-	        }
+        // Si la tecla es un número o símbolo
+        if (key_pressed != '#' && key_pressed != '*') {
+            if (display_index < DISPLAY_BUFFER_SIZE - 1) {  // Asegura que no se desborde el buffer
+                display_buffer[display_index++] = key_pressed;  // Añadir el número al buffer
+                display_buffer[display_index] = '\0';  // Asegura que el buffer siempre sea un string válido
+                Update_Display();  // Actualizar la pantalla
+                printf("Pantalla actualizada: %s\r\n", display_buffer);  // Mostrar en consola el buffer
+            }
+        } else if (key_pressed == '#') {
+            // Verificar si la clave ingresada es la correcta
+            if (display_index == 10 && strcmp(display_buffer, CORRECT_PASSCODE) == 0) {
+                // Si la clave es correcta
+                strcpy(display_buffer, "success");
+                HAL_GPIO_WritePin(GPIOA, SYSTEM_LED_Pin, GPIO_PIN_SET);  // Enciende el LED
+                printf("Clave correcta, LED encendido\r\n");
+                error_mode = 0;  // Detiene el parpadeo en caso de error
+            } else {
+                // Si la clave es incorrecta
+                strcpy(display_buffer, "Error");
+                printf("Clave incorrecta, iniciando parpadeo del LED\r\n");
+                error_mode = 1;  // Activa el modo de parpadeo
+            }
+            Update_Display();  // Mostrar el resultado en pantalla
+            printf("Pantalla actualizada: %s\r\n", display_buffer);  // Mostrar el resultado en consola
+            display_index = 0;  // Reiniciar el índice
 
-	        // Otros botones, como el BUTTON_RIGHT y BUTTON_LEFT, siguen igual
-	        if (GPIO_Pin == BUTTON_RIGHT_Pin) {
-	            HAL_UART_Transmit(&huart2, (uint8_t *)"S1\r\n", 4, 10);
-	            if (HAL_GetTick() < (left_last_press_tick + 300)) {  // Si la última pulsación fue en los últimos 300 ms
-	                left_toggles = 0xFFFFFF;  // Tiempo largo de toggle (infinito)
-	            } else {
-	                left_toggles = 6;
-	            }
-	            left_last_press_tick = HAL_GetTick();
-	        } else if (GPIO_Pin == BUTTON_LEFT_Pin) {
-	            left_toggles = 0;
-	        }
-	    }
+        } else if (key_pressed == '*') {
+            // Si se presiona '*', reiniciar la pantalla y el buffer
+            display_index = 0;  // Reiniciar el índice
+            HAL_GPIO_WritePin(GPIOA, SYSTEM_LED_Pin, GPIO_PIN_RESET);  // Apaga el LED
+            printf("Reiniciando pantalla y LED\r\n");
+            memset(display_buffer, 0, DISPLAY_BUFFER_SIZE);  // Limpiar el buffer
+            Update_Display();  // Limpiar la pantalla
+        }
+    }
+
+    // Otros botones, como el BUTTON_RIGHT y BUTTON_LEFT, siguen igual
+    if (GPIO_Pin == BUTTON_RIGHT_Pin) {
+        HAL_UART_Transmit(&huart2, (uint8_t *)"S1\r\n", 4, 10);
+        if (HAL_GetTick() < (left_last_press_tick + 300)) {  // Si la última pulsación fue en los últimos 300 ms
+            left_toggles = 0xFFFFFF;  // Tiempo largo de toggle (infinito)
+        } else {
+            left_toggles = 6;
+        }
+        left_last_press_tick = HAL_GetTick();
+    } else if (GPIO_Pin == BUTTON_LEFT_Pin) {
+        left_toggles = 0;
+    }
 }
 
 void low_power_mode()
@@ -220,12 +227,14 @@ int main(void)
   MX_USART2_UART_Init();
   MX_I2C1_Init();
   MX_USART3_UART_Init();
+  printf("Sistema iniciado\r\n");
   /* USER CODE BEGIN 2 */
 
   ssd1306_Init();
   ssd1306_SetCursor(25, 30);
-  ssd1306_WriteString("Hello World!", Font_7x10, White);
+  ssd1306_WriteString("Hola Usuario", Font_7x10, White);
   ssd1306_UpdateScreen();
+  printf("Pantalla inicializada con 'Hola Usuario'\r\n");
 
   ring_buffer_init(&usart2_rb, usart2_buffer, USART2_BUFFER_SIZE);
   /* USER CODE END 2 */
@@ -242,10 +251,11 @@ int main(void)
 			  uint8_t data;
 			  ring_buffer_read(&usart2_rb, &data);
 			  HAL_UART_Transmit(&huart2, &data, 1, 10);
+			  printf("%c", data);  // Mostrar los datos recibidos en consola
 		  }
 		  printf("\r\n");
 	  }
-	  low_power_mode();
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -254,8 +264,10 @@ int main(void)
 	          if (HAL_GetTick() - last_blink_time >= 4000) {  // Parpadeo cada 4 segundos
 	              HAL_GPIO_TogglePin(GPIOA, SYSTEM_LED_Pin);  // Cambia el estado del LED
 	              last_blink_time = HAL_GetTick();
+	              printf("Clave Incorrecta, LED parpadeando\r\n");
 	          }
 	      }
+	  low_power_mode();
   }
   /* USER CODE END 3 */
 }
